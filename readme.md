@@ -3,3 +3,4 @@ npm install -d typescript
 npx tsc --init
 
 npm install express
+npm install -d @types/express
