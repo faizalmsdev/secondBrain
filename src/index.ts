@@ -118,6 +118,18 @@ app.post('/api/v1/content', userMiddleware, async (req, res) => {
     })
 })
 
+app.get('/api/v1/content', userMiddleware, async (req, res) => {
+    //@ts-ignore
+    const userId = req.userId;
+    const content = await ContentModel.find({
+        userId : userId
+    }).populate("userId", "userName")
+
+    res.json({
+        content
+    })
+})
+
 app.post('/api/v1/brain/share', (req, res) => {
 
 })
