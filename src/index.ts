@@ -1,12 +1,16 @@
 import express from "express"
-import jsonwebtoken from "jsonwebtoken"
+import jwt from "jsonwebtoken"
 import mongoose from "mongoose"
 import {z} from "zod"
 import bcrypt from "bcrypt"
-import { UserModel } from "./db.js";
+import { ContentModel, UserModel } from "./db.js";
+import { JWT_USER_SECRET } from "./config.js";
+import { userMiddleware } from "./middleware.js";
 
 const app = express();
 app.use(express.json())
+
+
 
 app.post('/api/v1/signup', async (req, res) => {
 
@@ -57,13 +61,61 @@ app.post('/api/v1/signup', async (req, res) => {
 })
 
 app.post('/api/v1/signin', async (req, res) => {
-    const userName = req.body.userName
-    const password = req.body.password
+
+    const requiredBody = z.object({
+        userName: z.string().min(3).max(10),
+        password: z.string().min(8).max(20)
+    })
+
+    const parsedData = requiredBody.safeParse(req.body)
+    
+    if(!parsedData.success){
+        return res.status(403).json({
+            message: "Invalid input"
+        })
+    }
+
+    const { userName, password } = parsedData.data
+
+    const user = await UserModel.findOne({
+        userName: userName
+    })
+
+    if (!user || !user.password) {
+        return res.status(401).json({
+            message: "Invalid credentials"
+        });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password)
+
+    if(isPasswordValid){
+        res.status(200).json({
+            token: jwt.sign({id: user._id}, JWT_USER_SECRET)
+        })
+    }else{
+        res.status(403).json({
+            message: "Invalid credentials"
+        })
+    }
 
 })
 
-app.post('/api/v1/content', (req, res) => {
+app.post('/api/v1/content', userMiddleware, async (req, res) => {
+    const link = req.body.link;
+    const title = req.body.title;
 
+    await ContentModel.create({
+        link,
+        title,
+        //@ts-ignore
+        userId : req.userID,
+        tags: []
+    })
+
+    res.json({
+        message: "Content added successfully"
+    })
 })
 
 app.post('/api/v1/brain/share', (req, res) => {
