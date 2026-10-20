@@ -3,9 +3,10 @@ import jwt from "jsonwebtoken"
 import mongoose from "mongoose"
 import {z} from "zod"
 import bcrypt from "bcrypt"
-import { ContentModel, UserModel } from "./db.js";
+import { ContentModel, LinkModel, UserModel } from "./db.js";
 import { JWT_USER_SECRET } from "./config.js";
 import { userMiddleware } from "./middleware.js";
+import crypto from "crypto"
 
 const app = express();
 app.use(express.json())
@@ -109,7 +110,7 @@ app.post('/api/v1/content', userMiddleware, async (req, res) => {
         link,
         title,
         //@ts-ignore
-        userId : req.userID,
+        userId : req.userId,
         tags: []
     })
 
@@ -130,24 +131,74 @@ app.get('/api/v1/content', userMiddleware, async (req, res) => {
     })
 })
 
-app.delete('/api/v1/content'), userMiddleware, async (req, res) => {
+app.delete('/api/v1/content', userMiddleware, async (req, res) => {
     const contentId = req.body.contentId;
 
     await ContentModel.deleteMany({
-        contentId,
+        _id: contentId,
         //@ts-ignore
         userId: req.userId
     })
-    res.josn({
+    res.json({
         message: "Items deleted successfully"
     })
-}
-
-app.post('/api/v1/brain/share', (req, res) => {
-
 })
 
-app.post('/api/v1/brain/:shareLink', (req, res) => {
+app.post('/api/v1/brain/share', userMiddleware,async (req, res) => {
+    const share = req.body.share;
+    //@ts-ignore
+    const userId = req.userId;
+
+    try{
+        if(share){
+            const existing =  await LinkModel.findOne({ userId })
+            if(existing){
+                return res.json({
+                    hash: existing.hash
+                })
+            }
+
+            const hash = crypto.randomBytes(16).toString("hex")
+            await LinkModel.create({
+                userId,
+                hash
+            })
+            return res.status(200).json({
+                hash
+            })
+        }
+
+        await LinkModel.deleteOne({userId})
+        res.json({
+            message: "sharing disabled"
+        })
+    }catch(e) {
+        res.status(500).json({message: "Internal server error"})
+    }
+})
+
+app.get('/api/v1/brain/:shareLink', async (req, res) => {
+
+    try{
+
+        const link = await LinkModel.findOne({ hash: req.params.shareLink});
+    
+        if(!link){
+            return res.status(404).json({ message: "Invalid Input"})
+        }
+    
+        const [content, user]= await Promise.all([
+            ContentModel.find({ userId: link.userId}).select("title link tags"),
+            UserModel.find({userId: link.userId}).select("userName")
+        ])
+    
+        res.json({
+            userName: user?.userName,
+            content
+        })
+    }catch(e){
+        res.status(500).json({ message: "Internal server error"})
+    }
 
 })
 
